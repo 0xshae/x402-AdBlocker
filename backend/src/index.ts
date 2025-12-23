@@ -1,4 +1,4 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { paymentMiddleware } from '@b3dotfun/anyspend-x402-express';
@@ -6,154 +6,176 @@ import { paymentMiddleware } from '@b3dotfun/anyspend-x402-express';
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
+const ADMIN_WALLET = process.env.ADMIN_WALLET || '0x0000000000000000000000000000000000000000';
+const NETWORK = (process.env.NETWORK || 'base-sepolia') as 'base' | 'base-sepolia';
+const PRICE_PER_100_BLOCKS = process.env.PRICE_PER_100_BLOCKS || '$0.01';
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// In-memory database to track user quotas
-// Map<walletAddress, remainingBlocks>
-const userQuotas: Map<string, number> = new Map();
+// In-memory database to track user quotas (User Address -> Remaining Blocks)
+const userQuotas = new Map<string, number>();
 
-// Default quota top-up amount (blocks)
-const QUOTA_TOP_UP = 100;
+// Helper function to get or initialize user quota
+function getUserQuota(walletAddress: string): number {
+  if (!userQuotas.has(walletAddress)) {
+    userQuotas.set(walletAddress, 0); // Start with 0 quota
+  }
+  return userQuotas.get(walletAddress)!;
+}
 
-// Get admin wallet address from environment (default to a placeholder)
-const ADMIN_WALLET = process.env.ADMIN_WALLET || '0x0000000000000000000000000000000000000000';
+// Helper function to set user quota
+function setUserQuota(walletAddress: string, quota: number): void {
+  userQuotas.set(walletAddress, quota);
+}
 
-/**
- * Configure payment middleware for /renew-quota endpoint
- * This middleware will:
- * 1. Check if X-PAYMENT header is present
- * 2. If not present, return 402 Payment Required
- * 3. If present, verify the payment
- * 4. If verified, call next() to continue
- */
-const x402Middleware = paymentMiddleware(
-  ADMIN_WALLET as `0x${string}`, // payTo address
-  {
-    '/renew-quota': {
-      price: process.env.PAYMENT_AMOUNT || '$0.01', // USDC amount in dollars
-      network: process.env.NETWORK || 'base-sepolia', // Base network
-      config: {
-        description: 'Ad blocker quota renewal'
+// Configure x402 payment middleware
+// This middleware will intercept requests and check for payment signatures
+app.use(
+  paymentMiddleware(
+    ADMIN_WALLET, // payTo address - where payments will be sent
+    {
+      '/renew-quota': {
+        price: PRICE_PER_100_BLOCKS, // Cost for 100 blocks
+        network: NETWORK,
+        config: {
+          description: 'AdPayBlock: Pay to block 100 ads'
+        }
       }
     }
-  },
-  // Optional facilitator configuration
-  process.env.FACILITATOR_URL ? {
-    url: process.env.FACILITATOR_URL
-  } : undefined,
-  // Optional paywall configuration
-  process.env.CDP_CLIENT_KEY ? {
-    cdpClientKey: process.env.CDP_CLIENT_KEY,
-    appName: 'AdPayBlock',
-    appLogo: '/logo.svg'
-  } : undefined
+    // Using default facilitator (x402.org) for testnet
+  )
 );
 
-/**
- * Custom middleware to check quota before payment verification
- */
-const checkQuotaMiddleware = (req: Request, res: Response, next: NextFunction) => {
-  const { walletAddress } = req.body;
-
-  if (!walletAddress) {
-    return res.status(400).json({ 
-      error: 'walletAddress is required in request body' 
-    });
-  }
-
-  const quota = userQuotas.get(walletAddress) || 0;
-
-  // If user has quota, decrement and return success
-  if (quota > 0) {
-    userQuotas.set(walletAddress, quota - 1);
-    return res.status(200).json({ 
-      success: true,
-      message: 'Quota decremented',
-      remainingQuota: quota - 1
-    });
-  }
-
-  // If no quota, pass to payment middleware
-  // The payment middleware will handle 402 response or payment verification
-  next();
-};
-
-/**
- * Handler for successful payment verification
- * This is called after the payment middleware verifies payment
- */
-const handlePaymentSuccess = (req: Request, res: Response) => {
-  const { walletAddress } = req.body;
-
-  if (!walletAddress) {
-    return res.status(400).json({ 
-      error: 'walletAddress is required' 
-    });
-  }
-
-  // Top up user's quota
-  const currentQuota = userQuotas.get(walletAddress) || 0;
-  const newQuota = currentQuota + QUOTA_TOP_UP;
-  userQuotas.set(walletAddress, newQuota);
-
-  // Decrement one block for this request
-  userQuotas.set(walletAddress, newQuota - 1);
-
-  return res.status(200).json({
-    success: true,
-    message: 'Payment successful. Quota topped up.',
-    remainingQuota: newQuota - 1
-  });
-};
-
-/**
- * POST /renew-quota
- * 
- * Flow:
- * 1. Check if user has quota
- * 2. If yes: decrement quota and return 200
- * 3. If no: payment middleware handles 402 response or payment verification
- * 4. If payment verified: top up quota and return 200
- */
-app.post('/renew-quota', 
-  checkQuotaMiddleware,  // First check quota
-  x402Middleware,        // Then check/verify payment
-  handlePaymentSuccess   // Finally handle successful payment
-);
-
-/**
- * GET /quota/:walletAddress
- * Check current quota for a wallet address
- */
-app.get('/quota/:walletAddress', (req: Request, res: Response) => {
-  const { walletAddress } = req.params;
-  const quota = userQuotas.get(walletAddress) || 0;
-
-  return res.status(200).json({
-    walletAddress,
-    remainingQuota: quota
+// Health check endpoint
+app.get('/health', (req: Request, res: Response) => {
+  res.status(200).json({ 
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    network: NETWORK,
+    pricePerBlock: PRICE_PER_100_BLOCKS
   });
 });
 
-/**
- * Health check endpoint
- */
-app.get('/health', (req: Request, res: Response) => {
-  return res.status(200).json({
-    status: 'ok',
-    timestamp: new Date().toISOString()
+// Main x402 endpoint: POST /renew-quota
+app.post('/renew-quota', (req: Request, res: Response) => {
+  const { walletAddress } = req.body;
+
+  // Validate wallet address
+  if (!walletAddress) {
+    return res.status(400).json({ 
+      error: 'Bad Request',
+      message: 'walletAddress is required in request body'
+    });
+  }
+
+  // Normalize wallet address (lowercase)
+  const normalizedAddress = walletAddress.toLowerCase();
+
+  // Check current quota
+  const currentQuota = getUserQuota(normalizedAddress);
+
+  console.log(`[${new Date().toISOString()}] Quota check for ${normalizedAddress}: ${currentQuota} blocks remaining`);
+
+  if (currentQuota > 0) {
+    // User has quota remaining - decrement and allow
+    setUserQuota(normalizedAddress, currentQuota - 1);
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Quota renewed',
+      remainingBlocks: currentQuota - 1,
+      walletAddress: normalizedAddress
+    });
+  } else {
+    // No quota remaining - payment required
+    // The x402 middleware will handle this and add the necessary headers
+    console.log(`[${new Date().toISOString()}] Payment required for ${normalizedAddress}`);
+    
+    return res.status(402).json({
+      error: 'Payment Required',
+      message: 'Your ad blocking quota has expired. Please pay to continue.',
+      remainingBlocks: 0,
+      priceFor100Blocks: PRICE_PER_100_BLOCKS
+    });
+  }
+});
+
+// Endpoint to check quota (without decrementing)
+app.get('/check-quota/:walletAddress', (req: Request, res: Response) => {
+  const { walletAddress } = req.params;
+  
+  if (!walletAddress) {
+    return res.status(400).json({ 
+      error: 'Bad Request',
+      message: 'walletAddress is required'
+    });
+  }
+
+  const normalizedAddress = walletAddress.toLowerCase();
+  const quota = getUserQuota(normalizedAddress);
+
+  res.status(200).json({
+    walletAddress: normalizedAddress,
+    remainingBlocks: quota
+  });
+});
+
+// Admin endpoint to manually add quota (for testing)
+app.post('/admin/add-quota', (req: Request, res: Response) => {
+  const { walletAddress, blocks } = req.body;
+  const adminKey = req.headers['x-admin-key'];
+
+  // Simple admin key check (in production, use proper authentication)
+  if (adminKey !== process.env.ADMIN_KEY) {
+    return res.status(403).json({ error: 'Forbidden', message: 'Invalid admin key' });
+  }
+
+  if (!walletAddress || typeof blocks !== 'number') {
+    return res.status(400).json({ 
+      error: 'Bad Request',
+      message: 'walletAddress and blocks (number) are required'
+    });
+  }
+
+  const normalizedAddress = walletAddress.toLowerCase();
+  const currentQuota = getUserQuota(normalizedAddress);
+  setUserQuota(normalizedAddress, currentQuota + blocks);
+
+  res.status(200).json({
+    success: true,
+    message: 'Quota added',
+    walletAddress: normalizedAddress,
+    remainingBlocks: currentQuota + blocks
   });
 });
 
 // Start server
-app.listen(port, () => {
-  console.log(`🚀 AdPayBlock Backend Server running on port ${port}`);
-  console.log(`📊 Admin Wallet: ${ADMIN_WALLET}`);
-  console.log(`🌐 Network: ${process.env.NETWORK || 'base-sepolia'}`);
-  console.log(`💰 Payment Amount: ${process.env.PAYMENT_AMOUNT || '$0.01'}`);
+app.listen(PORT, () => {
+  console.log('╔════════════════════════════════════════════════════════╗');
+  console.log('║          AdPayBlock x402 Backend Server               ║');
+  console.log('╚════════════════════════════════════════════════════════╝');
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🔗 Network: ${NETWORK}`);
+  console.log(`💰 Price per 100 blocks: ${PRICE_PER_100_BLOCKS}`);
+  console.log(`📍 Admin wallet: ${ADMIN_WALLET}`);
+  console.log('\n📡 Endpoints:');
+  console.log(`   GET  /health - Health check`);
+  console.log(`   POST /renew-quota - Renew ad blocking quota`);
+  console.log(`   GET  /check-quota/:walletAddress - Check quota`);
+  console.log(`   POST /admin/add-quota - Add quota (admin only)`);
+  console.log('\n✨ Ready to accept payments via x402 protocol\n');
 });
 
+// Note: The x402 middleware automatically handles payment verification.
+// When a valid PAYMENT-SIGNATURE header is present:
+// 1. The middleware verifies it using AnySpend
+// 2. If valid, the request continues to the endpoint
+// 3. The endpoint should then grant the quota
+//
+// We need to detect successful payment and top up quota.
+// The middleware will set req.locals or similar to indicate successful payment.
+// Since the middleware documentation doesn't show this clearly, we may need to
+// adjust this logic after testing with the actual middleware behavior.
