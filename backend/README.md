@@ -1,118 +1,230 @@
 # AdPayBlock Backend Server
 
-Backend server for the x402 Ad Blocker, implementing the x402 protocol for micropayments on Base blockchain.
+The x402-compliant backend server for the AdPayBlock browser extension. This server handles micropayments for ad blocking using the AnySpend protocol on Base blockchain.
 
-## Features
+## 🏗️ Architecture
 
-- **x402 Protocol Implementation**: Handles payment verification using AnySpend
-- **Quota Management**: In-memory tracking of user ad-blocking quotas
-- **Payment Integration**: Automatic quota top-up on successful payment verification
-- **Base Blockchain**: Supports Base and Base Sepolia networks
+This backend acts as an **x402 Resource Server** that:
+- Tracks user ad blocking quotas (blocks remaining)
+- Returns `402 Payment Required` when quota is exhausted
+- Verifies payment signatures using AnySpend middleware
+- Settles transactions on Base blockchain (User → Admin Wallet)
 
-## Setup
+## 🚀 Quick Start
 
-1. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+### Prerequisites
 
-2. **Configure environment:**
-   ```bash
-   cp .env.example .env
-   ```
-   
-   Edit `.env` and set:
-   - `ADMIN_WALLET`: Your wallet address to receive payments
-   - `NETWORK`: `base-sepolia` (testnet) or `base` (mainnet)
-   - `PAYMENT_AMOUNT`: Amount per quota renewal (e.g., `$0.01`)
+- Node.js 18+ and npm
+- A wallet address on Base (or Base Sepolia for testing)
 
-3. **Run in development mode:**
-   ```bash
-   npm run dev
-   ```
+### Installation
 
-4. **Build for production:**
-   ```bash
-   npm run build
-   npm start
-   ```
+```bash
+# Install dependencies
+npm install
 
-## API Endpoints
+# Copy environment template
+cp .env.example .env
 
-### POST `/renew-quota`
+# Edit .env with your configuration
+nano .env
+```
 
-Renew ad-blocking quota for a user.
+### Configuration
 
-**Request Body:**
+Edit `.env` file:
+
+```env
+# Server port
+PORT=3000
+
+# Your wallet address (receives payments)
+ADMIN_WALLET=0xYourWalletAddressHere
+
+# Network: 'base' for mainnet, 'base-sepolia' for testnet
+NETWORK=base-sepolia
+
+# Price per 100 ad blocks (in USDC)
+PRICE_PER_100_BLOCKS=$0.01
+
+# Admin key for manual quota management
+ADMIN_KEY=your-secure-random-string
+```
+
+### Running the Server
+
+```bash
+# Development mode (with auto-reload)
+npm run dev
+
+# Production build
+npm run build
+npm start
+```
+
+## 📡 API Endpoints
+
+### Health Check
+```http
+GET /health
+```
+
+Returns server status and configuration.
+
+**Response:**
 ```json
+{
+  "status": "ok",
+  "timestamp": "2025-12-24T10:00:00.000Z",
+  "network": "base-sepolia",
+  "pricePerBlock": "$0.01"
+}
+```
+
+---
+
+### Renew Quota (x402 Protected)
+```http
+POST /renew-quota
+Content-Type: application/json
+
 {
   "walletAddress": "0x..."
 }
 ```
 
-**Response (200 OK - Has Quota):**
+**Behavior:**
+- If user has quota: Decrements quota and returns 200 OK
+- If quota exhausted: Returns 402 Payment Required with x402 headers
+- If valid payment signature provided: Verifies payment and tops up quota (+100 blocks)
+
+**Success Response (200):**
 ```json
 {
   "success": true,
-  "message": "Quota decremented",
-  "remainingQuota": 99
+  "message": "Quota renewed",
+  "remainingBlocks": 99,
+  "walletAddress": "0x..."
 }
 ```
 
-**Response (402 Payment Required - No Quota):**
-Returns standard x402 headers:
-- `x-402-amount`: Payment amount
-- `x-402-currency`: Currency (USDC)
-- `x-402-address`: Admin wallet address
-- `x-402-network`: Network (base-sepolia/base)
-
-**Response (200 OK - Payment Verified):**
+**Payment Required Response (402):**
 ```json
 {
-  "success": true,
-  "message": "Payment successful. Quota topped up.",
-  "remainingQuota": 99
+  "error": "Payment Required",
+  "message": "Your ad blocking quota has expired. Please pay to continue.",
+  "remainingBlocks": 0,
+  "priceFor100Blocks": "$0.01"
 }
 ```
 
-### GET `/quota/:walletAddress`
+The 402 response includes x402 protocol headers automatically added by the middleware.
 
-Check current quota for a wallet address.
+---
+
+### Check Quota
+```http
+GET /check-quota/:walletAddress
+```
+
+Check remaining blocks without decrementing quota.
 
 **Response:**
 ```json
 {
   "walletAddress": "0x...",
-  "remainingQuota": 50
+  "remainingBlocks": 50
 }
 ```
 
-### GET `/health`
+---
 
-Health check endpoint.
+### Admin: Add Quota
+```http
+POST /admin/add-quota
+Content-Type: application/json
+X-Admin-Key: your-admin-key
 
-## Architecture
+{
+  "walletAddress": "0x...",
+  "blocks": 100
+}
+```
 
-1. **Quota Check**: When `/renew-quota` is called, the server first checks if the user has remaining quota.
-2. **Quota Available**: If quota > 0, decrement by 1 and return 200 OK.
-3. **Quota Exhausted**: If quota <= 0, the payment middleware intercepts and returns 402 Payment Required.
-4. **Payment Verification**: If `PAYMENT-SIGNATURE` header is present, the middleware verifies the payment.
-5. **Quota Top-up**: On successful verification, user's quota is topped up (default: +100 blocks).
+Manually add quota for testing purposes.
 
-## Environment Variables
+## 🔐 x402 Protocol Flow
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PORT` | Server port | `3000` |
-| `ADMIN_WALLET` | Wallet address to receive payments | Required |
-| `NETWORK` | Blockchain network | `base-sepolia` |
-| `PAYMENT_AMOUNT` | Amount per quota renewal | `$0.01` |
-| `FACILITATOR_URL` | Custom payment facilitator URL | (optional) |
-| `CDP_CLIENT_KEY` | CDP client key for paywall | (optional) |
+1. **Extension makes request** to `/renew-quota` with wallet address
+2. **Server checks quota:**
+   - ✅ Quota available → Decrement and return 200
+   - ❌ No quota → Return 402 with payment headers
+3. **Extension sees 402** and prompts user for payment
+4. **User signs payment** using AnySpend SDK
+5. **Extension retries request** with `PAYMENT-SIGNATURE` header
+6. **Middleware verifies signature** and settles on-chain
+7. **Server tops up quota** (+100 blocks) and returns 200
 
-## Notes
+## 🧪 Testing
 
-- Quota storage is in-memory and will reset on server restart
-- For production, consider implementing persistent storage (database)
-- The payment middleware automatically handles x402 protocol compliance
+### Manual Testing with curl
 
+```bash
+# Health check
+curl http://localhost:3000/health
+
+# Check quota (should be 0 initially)
+curl http://localhost:3000/check-quota/0xYourAddress
+
+# Try to renew (should get 402)
+curl -X POST http://localhost:3000/renew-quota \
+  -H "Content-Type: application/json" \
+  -d '{"walletAddress":"0xYourAddress"}'
+
+# Add quota manually (for testing)
+curl -X POST http://localhost:3000/admin/add-quota \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-Key: dev-admin-key-12345" \
+  -d '{"walletAddress":"0xYourAddress","blocks":100}'
+
+# Try to renew again (should succeed now)
+curl -X POST http://localhost:3000/renew-quota \
+  -H "Content-Type: application/json" \
+  -d '{"walletAddress":"0xYourAddress"}'
+```
+
+## 🛠️ Tech Stack
+
+- **Runtime:** Node.js + TypeScript
+- **Framework:** Express.js
+- **Payment Protocol:** x402 (via `@b3dotfun/anyspend-x402-express`)
+- **Blockchain:** Base (Coinbase L2)
+- **Settlement:** AnySpend (chain-agnostic facilitator)
+
+## 📝 Notes
+
+- The server uses an **in-memory database** (Map) for quota tracking
+- For production, replace with a persistent database (PostgreSQL, Redis, etc.)
+- The x402 middleware handles all payment verification automatically
+- Default facilitator is x402.org (suitable for testnet)
+- For mainnet, consider running your own facilitator
+
+## 🔗 Integration with Extension
+
+The browser extension should:
+1. Track blocked ads count
+2. Every 100 blocks, call `/renew-quota`
+3. If 402 received, prompt user for payment
+4. Sign payment with AnySpend SDK
+5. Retry request with signature
+6. Continue blocking on success
+
+## 📚 Resources
+
+- [x402 Protocol Spec](https://x402.org)
+- [AnySpend Documentation](https://docs.anyspend.io)
+- [Base Network](https://base.org)
+
+## 📄 License
+
+ISC
