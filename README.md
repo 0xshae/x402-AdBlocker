@@ -1,5 +1,4 @@
-# AdPayBlock - x402 Hackathon MVP
-
+# AdToll
 > A "Pay-to-Block" browser extension using the x402 protocol on Base blockchain
 
 **Problem:** Creators lose revenue from ad blockers.  
@@ -9,7 +8,7 @@
 
 ## Project Overview
 
-AdPayBlock is a proof-of-concept browser extension that demonstrates micropayments for ad blocking using:
+AdToll is a proof-of-concept browser extension that demonstrates micropayments for ad blocking using:
 - **x402 Protocol** (HTTP 402 Payment Required)
 - **Base Blockchain** (Coinbase L2)
 - **AnySpend** (Chain-agnostic payment facilitator)
@@ -47,7 +46,7 @@ x402-AdBlocker/
 │   │   │   └── x402-settings.js    # NEW: Settings UI
 │   │   ├── dashboard.html          # Modified: x402 settings
 │   │   └── manifest.json           # Modified: permissions
-│   ├── ADPAYBLOCK_README.md        # Extension documentation
+│   ├── ADTOLL_README.md            # Extension documentation
 │   └── INTEGRATION.md              # Technical integration details
 │
 └── README.md            # This file
@@ -90,7 +89,7 @@ Then in Chrome:
 ### 3. Configure the Extension
 
 1. Click the extension icon → Settings
-2. Scroll to "AdPayBlock (x402 Payment Settings)"
+2. Scroll to "AdToll (x402 Payment Settings)"
 3. Enter:
    - Backend URL: `http://localhost:3000`
    - Wallet Address: Your Base wallet (0x...)
@@ -271,7 +270,7 @@ npm start        # Run production build
 ## Documentation
 
 - **[Backend README](./backend/README.md)** - Server setup and API docs
-- **[Extension README](./extension/ADPAYBLOCK_README.md)** - Extension docs
+- **[Extension README](./extension/ADTOLL_README.md)** - Extension docs
 - **[Integration Guide](./extension/INTEGRATION.md)** - Technical details
 
 ---

@@ -41,7 +41,7 @@ app.use(
         price: PRICE_PER_100_BLOCKS, // Cost for 100 blocks
         network: NETWORK,
         config: {
-          description: 'AdPayBlock: Pay to block 100 ads'
+          description: 'AdToll: Pay to block 100 ads'
         }
       }
     }
@@ -154,9 +154,9 @@ app.post('/admin/add-quota', (req: Request, res: Response) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log('╔════════════════════════════════════════════════════════╗');
-  console.log('║          AdPayBlock x402 Backend Server               ║');
-  console.log('╚════════════════════════════════════════════════════════╝');
+    console.log('╔════════════════════════════════════════════════════════╗');
+    console.log('║            AdToll x402 Backend Server                 ║');
+    console.log('╚════════════════════════════════════════════════════════╝');
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🔗 Network: ${NETWORK}`);
   console.log(`💰 Price per 100 blocks: ${PRICE_PER_100_BLOCKS}`);
