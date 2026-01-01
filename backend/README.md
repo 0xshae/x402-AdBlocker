@@ -1,8 +1,13 @@
-# AdPayBlock Backend Server
+# AdToll Backend Server
 
-The x402-compliant backend server for the AdPayBlock browser extension. This server handles micropayments for ad blocking using the AnySpend protocol on Base blockchain.
+> x402-compliant backend server for AdToll - handles micropayments for ad blocking using the AnySpend protocol on Base blockchain
 
-## 🏗️ Architecture
+**Problem:** Creators lose revenue from ad blockers.  
+**Solution:** A backend that enforces micropayments for ad blocking and enables revenue sharing with creators.
+
+---
+
+## Architecture
 
 This backend acts as an **x402 Resource Server** that:
 - Tracks user ad blocking quotas (blocks remaining)
@@ -10,7 +15,7 @@ This backend acts as an **x402 Resource Server** that:
 - Verifies payment signatures using AnySpend middleware
 - Settles transactions on Base blockchain (User → Admin Wallet)
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -62,7 +67,7 @@ npm run build
 npm start
 ```
 
-## 📡 API Endpoints
+## API Endpoints
 
 ### Health Check
 ```http
@@ -153,7 +158,7 @@ X-Admin-Key: your-admin-key
 
 Manually add quota for testing purposes.
 
-## 🔐 x402 Protocol Flow
+## x402 Protocol Flow
 
 1. **Extension makes request** to `/renew-quota` with wallet address
 2. **Server checks quota:**
@@ -165,7 +170,7 @@ Manually add quota for testing purposes.
 6. **Middleware verifies signature** and settles on-chain
 7. **Server tops up quota** (+100 blocks) and returns 200
 
-## 🧪 Testing
+## Testing
 
 ### Manual Testing with curl
 
@@ -193,7 +198,7 @@ curl -X POST http://localhost:3000/renew-quota \
   -d '{"walletAddress":"0xYourAddress"}'
 ```
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Runtime:** Node.js + TypeScript
 - **Framework:** Express.js
@@ -201,7 +206,7 @@ curl -X POST http://localhost:3000/renew-quota \
 - **Blockchain:** Base (Coinbase L2)
 - **Settlement:** AnySpend (chain-agnostic facilitator)
 
-## 📝 Notes
+## Notes
 
 - The server uses an **in-memory database** (Map) for quota tracking
 - For production, replace with a persistent database (PostgreSQL, Redis, etc.)
@@ -209,7 +214,7 @@ curl -X POST http://localhost:3000/renew-quota \
 - Default facilitator is x402.org (suitable for testnet)
 - For mainnet, consider running your own facilitator
 
-## 🔗 Integration with Extension
+## Integration with Extension
 
 The browser extension should:
 1. Track blocked ads count
@@ -219,12 +224,12 @@ The browser extension should:
 5. Retry request with signature
 6. Continue blocking on success
 
-## 📚 Resources
+## Resources
 
 - [x402 Protocol Spec](https://x402.org)
 - [AnySpend Documentation](https://docs.anyspend.io)
 - [Base Network](https://base.org)
 
-## 📄 License
+## License
 
 ISC
