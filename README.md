@@ -1,4 +1,4 @@
-# AdToll
+# AdToll: Micropayments for ad-free browsing
 > A "Pay-to-Block" browser extension using the x402 protocol on Base blockchain
 
 **Problem:** Creators lose revenue from ad blockers.  
